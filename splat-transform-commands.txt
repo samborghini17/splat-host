@@ -1,0 +1,6 @@
+Windows PowerShell:
+
+$env:NODE_OPTIONS="--max-old-space-size=16000"; splat-transform point_cloud.ply -l 0 point_cloud_1.ply -l 1 point_cloud_2.ply -l 2 point_cloud_3.ply -l 3 output_folder/lod-meta.json --filter-nan --filter-harmonics 0
+
+$env:NODE_OPTIONS="--max-old-space-size=16000"; splat-transform environment.ply environment.sog --filter-nan --filter-harmonics 0
+
