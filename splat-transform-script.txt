@@ -1,6 +1,6 @@
 # --- KONFIGURATION ---
-$sourceBase = "D:\ICL-Scans\KIO_splats_export"
-$targetBase = "D:\ICL-Scans\KIO_splats_playcanvas_lod"
+$sourceBase = "D:\ICL-Scans\FB_MP"
+$targetBase = "D:\ICL-Scans\splat-host\FB_MP"
 
 # Speicherlimit für Node.js setzen
 $env:NODE_OPTIONS = "--max-old-space-size=16000"
@@ -19,7 +19,7 @@ if (!(Test-Path $targetBase)) {
     New-Item -ItemType Directory -Force -Path $targetBase | Out-Null
 }
 
-# Alle Unterordner im Export-Verzeichnis holen
+# Alle Haupt-Unterordner im Quellverzeichnis holen (z.B. "Fotostudio")
 $folders = Get-ChildItem -Path $sourceBase -Directory
 
 foreach ($folder in $folders) {
@@ -39,18 +39,24 @@ foreach ($folder in $folders) {
     Push-Location $targetDir
 
     # --- 1. DYNAMISCHE LOD TRANSFORMATION ---
-    $sourcePly0 = Join-Path -Path $folder.FullName -ChildPath "point_cloud.ply"
+    # REKURSIVE SUCHE: Finde die erste point_cloud.ply, egal wie tief sie versteckt ist
+    $foundPly0 = Get-ChildItem -Path $folder.FullName -Filter "point_cloud.ply" -Recurse | Select-Object -First 1
 
-    if (Test-Path $sourcePly0) {
+    if ($foundPly0) {
+        $sourcePly0 = $foundPly0.FullName
+        # Speicher den Pfad des Ordners, in dem die gefundene Datei liegt
+        $sourceDir = $foundPly0.Directory.FullName 
+        
+        Write-Host "Gefunden in: $sourceDir" -ForegroundColor DarkCyan
         Write-Host "Starte dynamische LOD-Transformation..." -ForegroundColor Yellow
 
         # Basis-Command mit absolutem Pfad zur LOD 0 Datei
         $cmdLOD = "splat-transform `"$sourcePly0`" -l 0"
 
-        # Dynamisch alle weiteren Stufen (1, 2, 3...) aus dem Quellordner suchen und anfügen
+        # Dynamisch alle weiteren Stufen (1, 2, 3...) aus demselben Quellordner suchen
         $lodIndex = 1
         while ($true) {
-            $nextPly = Join-Path -Path $folder.FullName -ChildPath "point_cloud_$lodIndex.ply"
+            $nextPly = Join-Path -Path $sourceDir -ChildPath "point_cloud_$lodIndex.ply"
             
             if (Test-Path $nextPly) {
                 Write-Host "LOD $lodIndex gefunden: point_cloud_$lodIndex.ply" -ForegroundColor Gray
@@ -58,25 +64,27 @@ foreach ($folder in $folders) {
                 $cmdLOD += " `"$nextPly`" -l $lodIndex"
                 $lodIndex++
             } else {
-                # Sobald keine weitere point_cloud_X.ply gefunden wird, breche die Schleife ab
+                # Breche ab, sobald keine weitere Stufe existiert
                 break
             }
         }
 
-        # Output-Datei und Filter als Abschluss des Commands anfügen
+        # Output-Datei und Filter anfügen
         $cmdLOD += " -w lod-meta.json --filter-nan --filter-harmonics 0"
 
         Write-Host "> $cmdLOD" -ForegroundColor DarkGray
         Invoke-Expression $cmdLOD
     }
     else {
-        Write-Host "Überspringe LOD: Keine point_cloud.ply im Quellordner gefunden." -ForegroundColor Red
+        Write-Host "Überspringe LOD: Keine point_cloud.ply im Quellordner oder Unterordnern gefunden." -ForegroundColor Red
     }
 
     # --- 2. ENVIRONMENT TRANSFORMATION ---
-    $envPly = Join-Path -Path $folder.FullName -ChildPath "environment.ply"
+    # Auch hier rekursiv suchen, falls die Datei versteckt ist
+    $foundEnvPly = Get-ChildItem -Path $folder.FullName -Filter "environment.ply" -Recurse | Select-Object -First 1
     
-    if (Test-Path $envPly) {
+    if ($foundEnvPly) {
+        $envPly = $foundEnvPly.FullName
         Write-Host "`nStarte Transformation für environment.ply..." -ForegroundColor Yellow
         
         $cmdEnv = "splat-transform `"$envPly`" -w environment.sog --filter-nan --filter-harmonics 0"
@@ -92,4 +100,4 @@ foreach ($folder in $folders) {
     Pop-Location
 }
 
-Write-Host "`nFertig! Alle Ordner wurden nacheinander und mit dynamischem LOD verarbeitet." -ForegroundColor Green
+Write-Host "`nFertig! Alle Ordner wurden durchsucht und verarbeitet." -ForegroundColor Green
